@@ -1,0 +1,140 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  build-android:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # Accepts the project either as one ZIP in the repo root (the largest ZIP wins)
+      # or as normal folders. Finds MagicRDR.App.csproj wherever it ends up.
+      - name: Locate project (unpack ZIP if present)
+        shell: pwsh
+        run: |
+          $root = "."
+          $zip = Get-ChildItem -Path . -Filter *.zip -File |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if ($zip) {
+            Write-Host "Unpacking $($zip.Name)"
+            Expand-Archive -Path $zip.FullName -DestinationPath unpacked -Force
+            $root = "unpacked"
+          }
+          $csproj = Get-ChildItem -Path $root -Recurse -Filter MagicRDR.App.csproj |
+            Select-Object -First 1
+          if (-not $csproj) { throw "MagicRDR.App.csproj not found. Upload the project ZIP." }
+          Write-Host "Project: $($csproj.FullName)"
+          $lines = @(
+            "PROJECT_FILE=$($csproj.FullName)",
+            "PROJECT_DIR=$($csproj.DirectoryName)"
+          )
+          $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      # Optional: put your own names list in the repository root and it is bundled into the app.
+      # Accepted file names: names.txt or ImportedFileNames.txt (one file name per line).
+      - name: Bundle names list
+        shell: pwsh
+        run: |
+          $rawDir = Join-Path $env:PROJECT_DIR "Resources/Raw"
+          New-Item -ItemType Directory -Force -Path $rawDir | Out-Null
+          $names = Get-ChildItem -Path . -File |
+            Where-Object { $_.Name -in @("names.txt", "ImportedFileNames.txt") } |
+            Select-Object -First 1
+          if ($names) {
+            Copy-Item $names.FullName (Join-Path $rawDir "names.txt") -Force
+            $count = (Get-Content $names.FullName | Measure-Object -Line).Lines
+            Write-Host "Bundled $($names.Name): $count lines"
+          } else {
+            Write-Host "No names.txt in the repository root; using the list inside the project."
+          }
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Reports results only; a failing test does not stop the APK build.
+      - name: Run Core unit tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $tests = Get-ChildItem -Path . -Recurse -Filter MagicRDR.Core.Tests.csproj |
+            Select-Object -First 1
+          if ($tests) { dotnet test $tests.FullName -c Release --nologo }
+          else { Write-Host "No test project found, skipping." }
+
+      - name: Install MAUI Android workload
+        shell: pwsh
+        run: |
+          dotnet --version
+          dotnet workload install maui-android
+          dotnet workload list
+
+      # Best effort: downloads any missing Android SDK platform or build-tools.
+      - name: Install Android SDK components
+        continue-on-error: true
+        shell: pwsh
+        run: >-
+          dotnet build "${{ env.PROJECT_FILE }}"
+          -t:InstallAndroidDependencies
+          -f net10.0-android
+          -p:AcceptAndroidSDKLicenses=True
+
+      - name: Restore
+        shell: pwsh
+        run: >-
+          dotnet restore "${{ env.PROJECT_FILE }}"
+
+      - name: Build APK
+        shell: pwsh
+        run: >-
+          dotnet build "${{ env.PROJECT_FILE }}"
+          -c Release
+          -f net10.0-android
+          --no-restore
+          -p:AndroidPackageFormat=apk
+          -p:ApplicationVersion=${{ github.run_number }}
+
+      - name: Collect APK
+        shell: pwsh
+        run: |
+          $bin = Join-Path $env:PROJECT_DIR "bin/Release/net10.0-android"
+          $apks = Get-ChildItem -Path $bin -Filter *.apk -Recurse
+          $signed = $apks | Where-Object { $_.Name -like "*-Signed.apk" }
+          if ($signed) { $apks = $signed }
+          if (-not $apks) { throw "No APK found under $bin" }
+          New-Item -ItemType Directory -Force -Path apk-out | Out-Null
+          $apks | Copy-Item -Destination apk-out
+          Get-ChildItem apk-out | Format-Table Name, Length
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: MagicRDR-android-apk
+          path: apk-out/*.apk
+          if-no-files-found: error
+          retention-days: 14
