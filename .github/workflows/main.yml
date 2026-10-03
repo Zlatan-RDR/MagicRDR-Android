@@ -15,6 +15,9 @@ concurrency:
 env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  # Shown to users as versionName "<base>.<run number>". Change it to release a new visible version.
+  APP_VERSION_BASE: "1.0"
+  KEY_ALIAS: magicrdr
 
 jobs:
   build-android:
@@ -48,6 +51,18 @@ jobs:
           )
           $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
+      # versionCode must only ever go up, or Android refuses the update. Minutes since 2026-01-01 UTC
+      # never repeat and never go down, even if this workflow file is deleted and re-created.
+      - name: Compute version
+        shell: pwsh
+        run: |
+          $epoch = [DateTimeOffset]::new(2026, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+          $code = [int][Math]::Floor(([DateTimeOffset]::UtcNow - $epoch).TotalMinutes)
+          $name = "$($env:APP_VERSION_BASE).${{ github.run_number }}"
+          Write-Host "versionCode=$code versionName=$name"
+          $lines = @("VERSION_CODE=$code", "VERSION_NAME=$name")
+          $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
       # Optional: put your own names list in the repository root and it is bundled into the app.
       # Accepted file names: names.txt or ImportedFileNames.txt (one file name per line).
       - name: Bundle names list
@@ -78,14 +93,18 @@ jobs:
           java-version: "17"
 
       # Reports results only; a failing test does not stop the APK build.
-      - name: Run Core unit tests
+      - name: Run unit tests
         continue-on-error: true
         shell: pwsh
         run: |
-          $tests = Get-ChildItem -Path . -Recurse -Filter MagicRDR.Core.Tests.csproj |
-            Select-Object -First 1
-          if ($tests) { dotnet test $tests.FullName -c Release --nologo }
-          else { Write-Host "No test project found, skipping." }
+          $projects = Get-ChildItem -Path . -Recurse -Filter *.Tests.csproj
+          if (-not $projects) { Write-Host "No test projects found, skipping."; exit 0 }
+          $failed = $false
+          foreach ($p in $projects) {
+            dotnet test $p.FullName -c Release --nologo
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
 
       - name: Install MAUI Android workload
         shell: pwsh
@@ -117,19 +136,88 @@ jobs:
           -f net10.0-android
           --no-restore
           -p:AndroidPackageFormat=apk
-          -p:ApplicationVersion=${{ github.run_number }}
+          -p:ApplicationVersion=${{ env.VERSION_CODE }}
+          -p:ApplicationDisplayVersion=${{ env.VERSION_NAME }}
 
-      - name: Collect APK
+      # The build signs with a throw-away debug key. Here the APK is re-signed with the permanent key
+      # using Google's apksigner (APK Signature Scheme v2 + v3) and then verified.
+      # Without the two secrets it keeps the debug key and says so loudly.
+      - name: Sign and verify APK
         shell: pwsh
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           $bin = Join-Path $env:PROJECT_DIR "bin/Release/net10.0-android"
-          $apks = Get-ChildItem -Path $bin -Filter *.apk -Recurse
-          $signed = $apks | Where-Object { $_.Name -like "*-Signed.apk" }
-          if ($signed) { $apks = $signed }
-          if (-not $apks) { throw "No APK found under $bin" }
+          $built = Get-ChildItem -Path $bin -Filter *-Signed.apk -Recurse |
+            Select-Object -First 1
+          if (-not $built) { throw "No *-Signed.apk found under $bin" }
           New-Item -ItemType Directory -Force -Path apk-out | Out-Null
-          $apks | Copy-Item -Destination apk-out
-          Get-ChildItem apk-out | Format-Table Name, Length
+          $final = Join-Path "apk-out" "MagicRDR-$($env:VERSION_NAME).apk"
+
+          $hasKey = -not [string]::IsNullOrWhiteSpace($env:KEYSTORE_B64)
+          $hasPass = -not [string]::IsNullOrWhiteSpace($env:ANDROID_SIGNING_PASSWORD)
+          if ($hasKey -ne $hasPass) {
+            throw "Signing secrets are incomplete: set BOTH ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD."
+          }
+
+          $summary = @("### Magic RDR $($env:VERSION_NAME)", "",
+            "- versionName: $($env:VERSION_NAME)",
+            "- versionCode: $($env:VERSION_CODE)",
+            "- package: com.magicrdr.mobile")
+
+          if (-not $hasKey) {
+            Copy-Item $built.FullName $final -Force
+            $msg = "No signing secrets found. This APK uses a throw-away debug key "
+            $msg += "and can NOT update an installed copy. See docs/RELEASING.md."
+            Write-Host "::warning title=Temporary signing key::$msg"
+            $summary += "- **Signing: TEMPORARY debug key (cannot update an installed copy)**"
+            $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+
+          $sdk = $env:ANDROID_HOME
+          if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+          $apksigner = Get-ChildItem -Path (Join-Path $sdk "build-tools") -Filter apksigner.bat -Recurse |
+            Sort-Object { try { [version]$_.Directory.Name } catch { [version]"0.0" } } -Descending |
+            Select-Object -First 1
+          if (-not $apksigner) { throw "apksigner.bat not found under $sdk/build-tools" }
+          Write-Host "Using $($apksigner.FullName)"
+
+          $ks = Join-Path $env:RUNNER_TEMP "magicrdr-release.keystore"
+          try {
+            [IO.File]::WriteAllBytes($ks, [Convert]::FromBase64String($env:KEYSTORE_B64))
+            $signArgs = @(
+              "sign",
+              "--ks", $ks,
+              "--ks-key-alias", $env:KEY_ALIAS,
+              "--ks-pass", "env:ANDROID_SIGNING_PASSWORD",
+              "--key-pass", "env:ANDROID_SIGNING_PASSWORD",
+              "--v1-signing-enabled", "false",
+              "--v2-signing-enabled", "true",
+              "--v3-signing-enabled", "true",
+              "--out", $final,
+              $built.FullName
+            )
+            & $apksigner.FullName @signArgs
+            if ($LASTEXITCODE -ne 0) { throw "apksigner sign failed (wrong password or alias?)" }
+          }
+          finally {
+            Remove-Item $ks -Force -ErrorAction SilentlyContinue
+          }
+
+          $verify = (& $apksigner.FullName verify --verbose --print-certs $final 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "apksigner verify failed:`n$verify" }
+          Write-Host $verify
+          $v2 = $verify -match "v2 scheme[^\r\n]*: true"
+          $v3 = $verify -match "v3 scheme[^\r\n]*: true"
+          $sha = [regex]::Match($verify, "certificate SHA-256 digest: ([0-9a-fA-F]+)").Groups[1].Value
+          if (-not ($v2 -and $v3)) { throw "Expected v2 and v3 signatures. v2=$v2 v3=$v3" }
+
+          $summary += "- Signing: **permanent release key**, scheme v2 = $v2, v3 = $v3"
+          $summary += "- Certificate SHA-256: ``$sha``"
+          $summary += "", "Keep this fingerprint. Every future build must show the same one."
+          $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
