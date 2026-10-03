@@ -147,6 +147,9 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          # Optional repository VARIABLE (Settings > Variables). If set, the build fails
+          # when the APK is signed with any other certificate.
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
           $bin = Join-Path $env:PROJECT_DIR "bin/Release/net10.0-android"
           $built = Get-ChildItem -Path $bin -Filter *-Signed.apk -Recurse |
@@ -211,13 +214,23 @@ jobs:
           Write-Host $verify
           $v2 = $verify -match "v2 scheme[^\r\n]*: true"
           $v3 = $verify -match "v3 scheme[^\r\n]*: true"
-          $sha = [regex]::Match($verify, "certificate SHA-256 digest: ([0-9a-fA-F]+)").Groups[1].Value
-          if (-not ($v2 -and $v3)) { throw "Expected v2 and v3 signatures. v2=$v2 v3=$v3" }
+          $shaMatch = [regex]::Match($verify, "certificate SHA-256 digest: ([0-9a-fA-F]+)")
+          $sha = $shaMatch.Groups[1].Value.ToLower()
 
-          $summary += "- Signing: **permanent release key**, scheme v2 = $v2, v3 = $v3"
+          # Written before the checks, so the Summary page is filled even when a check fails.
+          $summary += "- Signing: **permanent release key** (v2 = $v2, v3 = $v3)"
           $summary += "- Certificate SHA-256: ``$sha``"
           $summary += "", "Keep this fingerprint. Every future build must show the same one."
           $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+          # minSdk is 29, so apksigner writes a v3 signature only: v2 is needed just for Android 7-8.
+          if (-not $v3) { throw "No v3 signature found. v2=$v2 v3=$v3" }
+          if (-not $sha) { throw "Could not read the certificate fingerprint from apksigner output." }
+          if ($env:EXPECTED_CERT_SHA256) {
+            $want = ($env:EXPECTED_CERT_SHA256 -replace "[^0-9a-fA-F]", "").ToLower()
+            if ($sha -ne $want) { throw "Wrong certificate. Expected $want but the APK has $sha" }
+            Write-Host "Certificate fingerprint matches ANDROID_CERT_SHA256."
+          }
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
