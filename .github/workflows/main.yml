@@ -3,10 +3,21 @@ name: Build Android APK
 on:
   push:
     branches: [ main, master ]
+    # Documentation-only pushes do not need a 13 minute build.
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
   workflow_dispatch:
+    inputs:
+      unpack_zip:
+        description: "Unpack the ZIP in the repository root into the source tree before building"
+        type: boolean
+        default: true
 
+# contents: write lets the workflow commit the unpacked sources and create the GitHub Release.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-android-${{ github.ref }}
@@ -23,25 +34,146 @@ jobs:
   build-android:
     runs-on: windows-latest
     timeout-minutes: 90
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      # Accepts the project either as one ZIP in the repo root (the largest ZIP wins)
-      # or as normal folders. Finds MagicRDR.App.csproj wherever it ends up.
-      - name: Locate project (unpack ZIP if present)
+      # Unpacks MagicRDR-project.zip (the one in the repository root) so that src/, tests/, docs/ and
+      # MagicRDR.sln are visible in the file tree. It only does so when a new ZIP was pushed (or when the
+      # source tree does not exist yet, or when you start the workflow by hand), so a push that edits a
+      # single source file never gets overwritten by an old ZIP.
+      # README.md, LICENSE and .gitignore are yours: they are taken from the ZIP only if missing.
+      - name: Unpack source ZIP into the repository
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          UNPACK_INPUT: ${{ inputs.unpack_zip }}
+        run: |
+          $zipChanged = $false
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $zipChanged = ($env:UNPACK_INPUT -ne "false")
+          }
+          else {
+            $before = $env:BEFORE_SHA
+            $known = $false
+            if ($before -and $before -notmatch '^0+$') {
+              git cat-file -e "${before}^{commit}" 2>$null
+              $known = ($LASTEXITCODE -eq 0)
+            }
+            if (-not $known) {
+              $zipChanged = $true
+            }
+            else {
+              $changed = @(git diff --name-only $before $env:GITHUB_SHA)
+              $zipChanged = (@($changed | Where-Object { $_ -match '^[^/]+\.zip$' }).Count -gt 0)
+            }
+          }
+          if (-not (Test-Path "src")) {
+            Write-Host "There is no src folder yet: unpacking the ZIP."
+            $zipChanged = $true
+          }
+
+          if (-not $zipChanged) {
+            Write-Host "No new ZIP in this push: building the files that are already in the repository."
+            "EXTRACTED=false" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+            exit 0
+          }
+
+          $zips = @(Get-ChildItem -Path . -Filter *.zip -File)
+          if ($zips.Count -eq 0) {
+            if (Test-Path "src") {
+              Write-Host "No ZIP in the repository root: using the existing source tree."
+              "EXTRACTED=false" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+              exit 0
+            }
+            throw "No ZIP found in the repository root and no src folder. Upload MagicRDR-project.zip."
+          }
+          $zip = $zips | Where-Object { $_.Name -ieq "MagicRDR-project.zip" } | Select-Object -First 1
+          if (-not $zip) { $zip = $zips | Sort-Object Length -Descending | Select-Object -First 1 }
+          Write-Host "Unpacking $($zip.Name)"
+
+          $tmp = Join-Path $env:RUNNER_TEMP "unzipped"
+          if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+          Expand-Archive -Path $zip.FullName -DestinationPath $tmp -Force
+
+          # The ZIP normally holds one top-level folder (MagicRDR/). Its content goes to the repository root.
+          $skipNames = @("__MACOSX", ".DS_Store")
+          $items = @(Get-ChildItem -LiteralPath $tmp -Force | Where-Object { $skipNames -notcontains $_.Name })
+          $source = $tmp
+          if ($items.Count -eq 1 -and $items[0].PSIsContainer) { $source = $items[0].FullName }
+          $items = @(Get-ChildItem -LiteralPath $source -Force | Where-Object { $skipNames -notcontains $_.Name })
+          if (-not ($items | Where-Object { $_.Name -eq "src" })) {
+            throw "The ZIP has no src folder. Is it the right MagicRDR-project.zip?"
+          }
+
+          $neverCopy = @(".git", ".github")
+          $onlyIfMissing = @("README.md", "LICENSE", ".gitignore")
+          $repoRoot = $PWD.Path
+          foreach ($item in $items) {
+            if ($neverCopy -contains $item.Name) { continue }
+            if (-not $item.PSIsContainer -and $item.Extension -ieq ".zip") { continue }
+            $target = Join-Path $repoRoot $item.Name
+            if ($onlyIfMissing -contains $item.Name) {
+              if (Test-Path $target) { Write-Host "Keeping your $($item.Name)"; continue }
+            }
+            elseif (Test-Path $target) {
+              Remove-Item $target -Recurse -Force
+            }
+            Copy-Item -LiteralPath $item.FullName -Destination $target -Recurse -Force
+            Write-Host "Updated $($item.Name)"
+          }
+
+          $lines = @("EXTRACTED=true", "ZIP_NAME=$($zip.Name)")
+          $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
+
+      - name: Commit unpacked sources
+        if: env.EXTRACTED == 'true'
+        shell: pwsh
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config core.autocrlf false
+          git config core.safecrlf false
+          git add -A
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "The repository already matches the ZIP. Nothing to commit."
+            exit 0
+          }
+          git commit -m "Unpack $($env:ZIP_NAME) into the repository [skip ci]"
+          if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
+
+          $pushed = $false
+          for ($i = 1; $i -le 3; $i++) {
+            git push origin "HEAD:$($env:BRANCH)"
+            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+            Write-Host "Push rejected (attempt $i). Fetching and rebasing, then trying again."
+            git fetch origin $env:BRANCH
+            git rebase "origin/$($env:BRANCH)"
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort
+              throw "Could not rebase onto origin/$($env:BRANCH)."
+            }
+          }
+          if (-not $pushed) { throw "git push failed after 3 attempts." }
+          Write-Host "Pushed the unpacked sources to $($env:BRANCH)."
+          exit 0
+
+      # Finds MagicRDR.App.csproj wherever it is in the repository.
+      - name: Locate project
         shell: pwsh
         run: |
-          $root = "."
-          $zip = Get-ChildItem -Path . -Filter *.zip -File |
-            Sort-Object Length -Descending | Select-Object -First 1
-          if ($zip) {
-            Write-Host "Unpacking $($zip.Name)"
-            Expand-Archive -Path $zip.FullName -DestinationPath unpacked -Force
-            $root = "unpacked"
-          }
-          $csproj = Get-ChildItem -Path $root -Recurse -Filter MagicRDR.App.csproj |
+          $csproj = Get-ChildItem -Path . -Recurse -Filter MagicRDR.App.csproj |
+            Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
             Select-Object -First 1
           if (-not $csproj) { throw "MagicRDR.App.csproj not found. Upload the project ZIP." }
           Write-Host "Project: $($csproj.FullName)"
@@ -141,7 +273,7 @@ jobs:
 
       # The build signs with a throw-away debug key. Here the APK is re-signed with the permanent key
       # using Google's apksigner (APK Signature Scheme v2 + v3) and then verified.
-      # Without the two secrets it keeps the debug key and says so loudly.
+      # Without the two secrets it keeps the debug key and says so loudly (and no Release is published).
       - name: Sign and verify APK
         shell: pwsh
         env:
@@ -156,7 +288,7 @@ jobs:
             Select-Object -First 1
           if (-not $built) { throw "No *-Signed.apk found under $bin" }
           New-Item -ItemType Directory -Force -Path apk-out | Out-Null
-          $final = Join-Path "apk-out" "MagicRDR-$($env:VERSION_NAME).apk"
+          $final = Join-Path "apk-out" "MagicRDR-Android-v$($env:VERSION_NAME).apk"
 
           $hasKey = -not [string]::IsNullOrWhiteSpace($env:KEYSTORE_B64)
           $hasPass = -not [string]::IsNullOrWhiteSpace($env:ANDROID_SIGNING_PASSWORD)
@@ -172,10 +304,12 @@ jobs:
           if (-not $hasKey) {
             Copy-Item $built.FullName $final -Force
             $msg = "No signing secrets found. This APK uses a throw-away debug key "
-            $msg += "and can NOT update an installed copy. See docs/RELEASING.md."
+            $msg += "and can NOT update an installed copy. No GitHub Release will be published. See docs/RELEASING.md."
             Write-Host "::warning title=Temporary signing key::$msg"
-            $summary += "- **Signing: TEMPORARY debug key (cannot update an installed copy)**"
+            $summary += "- **Signing: TEMPORARY debug key (cannot update an installed copy, no Release published)**"
             $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            $lines = @("SIGNED=false", "APK_FILE=$final")
+            $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
             exit 0
           }
 
@@ -232,6 +366,10 @@ jobs:
             Write-Host "Certificate fingerprint matches ANDROID_CERT_SHA256."
           }
 
+          $lines = @("SIGNED=true", "APK_FILE=$final", "CERT_SHA256=$sha")
+          $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
         with:
@@ -239,3 +377,63 @@ jobs:
           path: apk-out/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      # Creates (or updates) the Release "v<versionName>" and attaches the signed APK as a public asset.
+      # Only runs when the APK was signed with the permanent key.
+      - name: Publish GitHub Release
+        if: env.SIGNED == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = "Continue"
+          $ver = $env:VERSION_NAME
+          $tag = "v$ver"
+          $apk = (Resolve-Path $env:APK_FILE).Path
+          $apkName = Split-Path $apk -Leaf
+          $apkSha = (Get-FileHash -Algorithm SHA256 -Path $apk).Hash.ToLower()
+          $sizeMb = [Math]::Round((Get-Item $apk).Length / 1MB, 1)
+          $commit = (git rev-parse HEAD).Trim()
+          $short = $commit.Substring(0, 7)
+          $bt = [string][char]96
+
+          $lines = @(
+            "## Magic RDR $ver",
+            "",
+            "Direct download: **$apkName** ($sizeMb MB). Requires Android 10 or newer.",
+            "",
+            "### Verify before installing",
+            "- APK file SHA-256: $bt$apkSha$bt",
+            "- Signing certificate SHA-256: $bt$($env:CERT_SHA256)$bt",
+            "",
+            "Every release is signed with the same permanent key, so a new version installs over the old one. If the certificate fingerprint differs from the one above or from the README, do not install the file.",
+            "",
+            "### التثبيت",
+            "1. نزّل ملف APK من قسم Assets أدناه.",
+            "2. اسمح بالتثبيت من مصادر غير معروفة عندما يطلب أندرويد ذلك.",
+            "3. ثبّته فوق النسخة القديمة مباشرة: التوقيع واحد فتبقى بياناتك.",
+            "",
+            "Build: commit $short, GitHub Actions run $($env:GITHUB_RUN_NUMBER)"
+          )
+          $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          ($lines -join "`n") | Set-Content -Path $notes -Encoding utf8
+
+          $null = gh release view $tag --repo $env:REPO 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists: updating it."
+            gh release upload $tag $apk --clobber --repo $env:REPO
+            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+            gh release edit $tag --repo $env:REPO --title "Magic RDR $ver" --notes-file $notes --latest
+            if ($LASTEXITCODE -ne 0) { throw "gh release edit failed" }
+          }
+          else {
+            Write-Host "Creating release $tag."
+            gh release create $tag $apk --repo $env:REPO --target $commit --title "Magic RDR $ver" --notes-file $notes --latest
+            if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          }
+
+          $link = "https://github.com/$($env:REPO)/releases/tag/$tag"
+          Write-Host "Release: $link"
+          "- Release: $link" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          exit 0
