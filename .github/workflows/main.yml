@@ -141,9 +141,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config core.autocrlf false
-          git config core.safecrlf false
-          git add -A
+          # Stage everything except .github: the workflow token is not allowed to change workflow files.
+          # Do not touch core.autocrlf here: on Windows the checkout uses CRLF, and changing the setting
+          # would make every existing file look modified (that is what broke the first version).
+          git add -A -- . ":(exclude).github"
+          git reset -q -- .github
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             Write-Host "The repository already matches the ZIP. Nothing to commit."
