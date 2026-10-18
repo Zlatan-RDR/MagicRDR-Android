@@ -1,0 +1,592 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:MagicRDR.App.ViewModels"
+             x:Class="MagicRDR.App.MainPage"
+             Title="Magic RDR"
+             SafeAreaEdges="All"
+             FlowDirection="LeftToRight"
+             BackgroundColor="{StaticResource Ink}">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="0">
+
+        <!-- Header: back arrow, archive name, current folder, unsaved marker, names button -->
+        <Grid Grid.Row="0"
+              BackgroundColor="{StaticResource Leather}"
+              Padding="8,10,12,12"
+              ColumnDefinitions="Auto,*,Auto"
+              ColumnSpacing="6">
+            <Button Grid.Column="0"
+                    Text="‹"
+                    Style="{StaticResource IconButton}"
+                    VerticalOptions="Start"
+                    IsVisible="{Binding CanGoUp}"
+                    Command="{Binding GoUpCommand}"
+                    SemanticProperties.Description="Go to the parent folder" />
+            <VerticalStackLayout Grid.Column="1"
+                                 Spacing="2"
+                                 VerticalOptions="Center"
+                                 Margin="8,0,0,0">
+                <Label Text="{Binding HeaderTitle}"
+                       FontSize="21"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource Parchment}"
+                       LineBreakMode="MiddleTruncation" />
+                <Label Text="{Binding CurrentPath}"
+                       FontSize="13"
+                       TextColor="{StaticResource Muted}"
+                       LineBreakMode="HeadTruncation"
+                       IsVisible="{Binding HasArchive}" />
+                <Label Text="● Unsaved changes"
+                       FontSize="13"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource Brass}"
+                       IsVisible="{Binding HasUnsavedChanges}" />
+            </VerticalStackLayout>
+            <Button Grid.Column="2"
+                    Text="Close"
+                    Style="{StaticResource RowButton}"
+                    VerticalOptions="Start"
+                    IsVisible="{Binding HasArchive}"
+                    Command="{Binding CloseArchiveCommand}"
+                    SemanticProperties.Hint="Close this archive and delete its saved copy" />
+        </Grid>
+
+        <!-- Filter box and item count (only while an archive is open) -->
+        <VerticalStackLayout Grid.Row="1"
+                             Padding="16,12,16,4"
+                             Spacing="6"
+                             IsVisible="{Binding HasArchive}">
+            <Border Stroke="{StaticResource RuleBrush}"
+                    StrokeThickness="1"
+                    BackgroundColor="{StaticResource LeatherRaised}"
+                    Padding="14,0"
+                    HeightRequest="48">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="14" />
+                </Border.StrokeShape>
+                <Entry Text="{Binding SearchText}"
+                       Placeholder="Filter this folder"
+                       PlaceholderColor="{StaticResource Muted}"
+                       TextColor="{StaticResource Parchment}"
+                       BackgroundColor="Transparent"
+                       FontSize="16"
+                       ReturnType="Search"
+                       IsSpellCheckEnabled="False"
+                       IsTextPredictionEnabled="False"
+                       ClearButtonVisibility="WhileEditing"
+                       VerticalOptions="Center" />
+            </Border>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Text="Import names"
+                        Style="{StaticResource RowButton}"
+                        Command="{Binding LoadNamesCommand}"
+                        SemanticProperties.Hint="Load a text file with one file name per line" />
+                <Button Grid.Column="1"
+                        Text="Find names"
+                        Style="{StaticResource RowButton}"
+                        Command="{Binding FindNamesCommand}"
+                        SemanticProperties.Hint="Look for names inside this archive's text files" />
+            </Grid>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                <Button Text="{Binding MultiSelectLabel}"
+                        Style="{StaticResource RowButton}"
+                        Command="{Binding ToggleMultiSelectCommand}"
+                        SemanticProperties.Hint="Tick several files to extract or replace them together" />
+                <Button Grid.Column="1"
+                        Text="Select All"
+                        Style="{StaticResource RowButton}"
+                        IsVisible="{Binding IsMultiSelect}"
+                        Command="{Binding SelectAllCommand}"
+                        SemanticProperties.Hint="Tick every file shown in this folder" />
+                <Button Grid.Column="2"
+                        Text="Select None"
+                        Style="{StaticResource RowButton}"
+                        IsVisible="{Binding IsMultiSelect}"
+                        Command="{Binding SelectNoneCommand}"
+                        SemanticProperties.Hint="Clear every tick" />
+            </Grid>
+            <Label Text="{Binding SelectionSummary}"
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   TextColor="{StaticResource Brass}"
+                   Margin="4,0,0,0"
+                   IsVisible="{Binding IsMultiSelect}" />
+            <Label Text="{Binding NamesSummary}"
+                   FontSize="12"
+                   TextColor="{StaticResource Muted}"
+                   Margin="4,0,0,0" />
+            <Label Text="{Binding ListSummary}"
+                   FontSize="12"
+                   TextColor="{StaticResource Muted}"
+                   Margin="4,0,0,0" />
+        </VerticalStackLayout>
+
+        <!-- File list: tap a row to select it; use "Open" to enter a folder -->
+        <CollectionView x:Name="FileList"
+                        Grid.Row="2"
+                        ItemsSource="{Binding FileTreeNodes}"
+                        SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
+                        SelectionMode="Single"
+                        Margin="12,4,12,0">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+            </CollectionView.ItemsLayout>
+
+            <CollectionView.EmptyView>
+                <VerticalStackLayout VerticalOptions="Center"
+                                     HorizontalOptions="Center"
+                                     Padding="32"
+                                     Spacing="8">
+                    <Label Text="{Binding EmptyTitle}"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           HorizontalTextAlignment="Center"
+                           TextColor="{StaticResource Parchment}" />
+                    <Label Text="{Binding EmptyHint}"
+                           FontSize="15"
+                           HorizontalTextAlignment="Center"
+                           TextColor="{StaticResource Muted}" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border StrokeThickness="1.5"
+                            Stroke="{StaticResource RuleBrush}"
+                            BackgroundColor="{StaticResource LeatherRaised}"
+                            Padding="12,10"
+                            MinimumHeightRequest="68">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroupList>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal">
+                                        <VisualState.Setters>
+                                            <Setter Property="Stroke" Value="{StaticResource RuleBrush}" />
+                                            <Setter Property="BackgroundColor" Value="{StaticResource LeatherRaised}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Selected">
+                                        <VisualState.Setters>
+                                            <Setter Property="Stroke" Value="{StaticResource BrassBrush}" />
+                                            <Setter Property="BackgroundColor" Value="{StaticResource RowSelected}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateGroupList>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Grid ColumnDefinitions="Auto,44,*,Auto" ColumnSpacing="8">
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                      IsVisible="{Binding ShowCheckBox}"
+                                      Color="{StaticResource Brass}"
+                                      VerticalOptions="Center"
+                                      SemanticProperties.Description="Select this file" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding Glyph}"
+                                   FontSize="26"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   TextColor="{StaticResource Brass}" />
+
+                            <VerticalStackLayout Grid.Column="2"
+                                                 VerticalOptions="Center"
+                                                 Spacing="2">
+                                <Label Text="{Binding Name}"
+                                       FontSize="16"
+                                       TextColor="{StaticResource Parchment}"
+                                       LineBreakMode="MiddleTruncation" />
+                                <Label Text="{Binding Detail}"
+                                       FontSize="13"
+                                       TextColor="{StaticResource Muted}"
+                                       LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+
+                            <Button Grid.Column="3"
+                                    Text="Open"
+                                    Style="{StaticResource RowButton}"
+                                    VerticalOptions="Center"
+                                    IsVisible="{Binding CanOpen}"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainViewModel}}, Path=OpenFolderCommand}"
+                                    CommandParameter="{Binding .}" />
+
+                            <Button Grid.Column="3"
+                                    Text="View"
+                                    Style="{StaticResource RowButton}"
+                                    VerticalOptions="Center"
+                                    IsVisible="{Binding CanView}"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainViewModel}}, Path=OpenViewerCommand}"
+                                    CommandParameter="{Binding .}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Progress + status (progress bar and Cancel only while an operation runs) -->
+        <VerticalStackLayout Grid.Row="3"
+                             BackgroundColor="{StaticResource Leather}"
+                             Padding="20,12,20,10"
+                             Spacing="8">
+            <ProgressBar Progress="{Binding ProgressValue}"
+                         ProgressColor="{StaticResource Brass}"
+                         BackgroundColor="{StaticResource Rule}"
+                         HeightRequest="6"
+                         IsVisible="{Binding IsLoading}" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <Label Text="{Binding StatusMessage}"
+                       FontSize="14"
+                       TextColor="{StaticResource Parchment}"
+                       VerticalOptions="Center"
+                       MaxLines="3"
+                       LineBreakMode="TailTruncation"
+                       SemanticProperties.HeadingLevel="None" />
+                <Button Grid.Column="1"
+                        Text="Cancel"
+                        Style="{StaticResource RowButton}"
+                        IsVisible="{Binding IsLoading}"
+                        Command="{Binding CancelCommand}" />
+            </Grid>
+        </VerticalStackLayout>
+
+        <!-- Action bar: two rows of large touch targets -->
+        <Grid Grid.Row="4"
+              BackgroundColor="{StaticResource Leather}"
+              Padding="16,4,16,12"
+              ColumnDefinitions="*,*,*,*,*,*"
+              RowDefinitions="Auto,Auto"
+              ColumnSpacing="10"
+              RowSpacing="10">
+            <Button Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                    Text="Open RPF"
+                    Style="{StaticResource PrimaryAction}"
+                    Command="{Binding OpenRpfCommand}" />
+            <Button Grid.Row="0" Grid.Column="3" Grid.ColumnSpan="3"
+                    Text="Save RPF"
+                    Style="{StaticResource AccentAction}"
+                    Command="{Binding SaveRpfCommand}" />
+            <Button Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                    Text="View"
+                    Style="{StaticResource QuietAction}"
+                    Command="{Binding OpenViewerCommand}" />
+            <Button Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                    Text="{Binding ExtractLabel}"
+                    Style="{StaticResource QuietAction}"
+                    Command="{Binding ExtractFileCommand}" />
+            <Button Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2"
+                    Text="{Binding ReplaceLabel}"
+                    Style="{StaticResource AccentAction}"
+                    Command="{Binding ReplaceFileCommand}" />
+        </Grid>
+
+        <!-- Viewer / editor: covers the whole page while a file is open -->
+        <Grid Grid.RowSpan="5"
+              RowDefinitions="Auto,Auto,*,Auto"
+              RowSpacing="0"
+              BackgroundColor="{StaticResource Ink}"
+              IsVisible="{Binding IsViewerOpen}">
+
+            <Grid Grid.Row="0"
+                  BackgroundColor="{StaticResource Leather}"
+                  Padding="8,10,12,12"
+                  ColumnDefinitions="Auto,*"
+                  ColumnSpacing="6">
+                <Button Grid.Column="0"
+                        Text="‹"
+                        Style="{StaticResource IconButton}"
+                        VerticalOptions="Start"
+                        Command="{Binding CloseViewerCommand}"
+                        SemanticProperties.Description="Close the viewer" />
+                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center" Margin="8,0,0,0">
+                    <Label Text="{Binding ViewerTitle}"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource Parchment}"
+                           LineBreakMode="MiddleTruncation" />
+                    <Label Text="{Binding ViewerInfo}"
+                           FontSize="13"
+                           TextColor="{StaticResource Muted}"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Grid Grid.Row="1"
+                  Padding="12,10,12,6"
+                  ColumnDefinitions="*,*,*"
+                  ColumnSpacing="8">
+                <Button Grid.Column="0"
+                        Text="Text"
+                        Style="{StaticResource RowButton}"
+                        IsVisible="{Binding IsTextAvailable}"
+                        Command="{Binding ShowTextCommand}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsTextMode}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource RowSelected}" />
+                            <Setter Property="TextColor" Value="{StaticResource Parchment}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Grid.Column="1"
+                        Text="Hex"
+                        Style="{StaticResource RowButton}"
+                        Command="{Binding ShowHexCommand}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsHexMode}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource RowSelected}" />
+                            <Setter Property="TextColor" Value="{StaticResource Parchment}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Grid.Column="2"
+                        Text="Table"
+                        Style="{StaticResource RowButton}"
+                        IsVisible="{Binding IsTableAvailable}"
+                        Command="{Binding ShowTableCommand}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsTableMode}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource RowSelected}" />
+                            <Setter Property="TextColor" Value="{StaticResource Parchment}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="12,0,12,0">
+                <Border Stroke="{StaticResource RuleBrush}"
+                        StrokeThickness="1"
+                        BackgroundColor="{StaticResource Leather}"
+                        IsVisible="{Binding IsTextMode}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Editor Text="{Binding EditorText}"
+                            IsReadOnly="{Binding IsEditorReadOnly}"
+                            FontFamily="monospace"
+                            FontSize="14"
+                            TextColor="{StaticResource Parchment}"
+                            BackgroundColor="Transparent"
+                            AutoSize="Disabled"
+                            IsSpellCheckEnabled="False"
+                            IsTextPredictionEnabled="False" />
+                </Border>
+                <Grid RowDefinitions="Auto,*,Auto"
+                      RowSpacing="8"
+                      IsVisible="{Binding IsTableMode}">
+
+                    <VerticalStackLayout Grid.Row="0" Spacing="6">
+                        <Picker ItemsSource="{Binding LanguageChoices}"
+                                SelectedIndex="{Binding SelectedLanguageIndex}"
+                                Title="Language"
+                                TextColor="{StaticResource Parchment}"
+                                TitleColor="{StaticResource Muted}"
+                                BackgroundColor="{StaticResource LeatherRaised}"
+                                IsVisible="{Binding HasLanguages}" />
+                        <Border Stroke="{StaticResource RuleBrush}"
+                                StrokeThickness="1"
+                                BackgroundColor="{StaticResource LeatherRaised}"
+                                Padding="14,0"
+                                HeightRequest="44">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Entry Text="{Binding TableFilter}"
+                                   Placeholder="Filter by number, key or text"
+                                   PlaceholderColor="{StaticResource Muted}"
+                                   TextColor="{StaticResource Parchment}"
+                                   BackgroundColor="Transparent"
+                                   FontSize="15"
+                                   ReturnType="Search"
+                                   IsSpellCheckEnabled="False"
+                                   IsTextPredictionEnabled="False"
+                                   ClearButtonVisibility="WhileEditing"
+                                   VerticalOptions="Center" />
+                        </Border>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <Label Text="Arabic Visual Fix"
+                                   FontSize="14"
+                                   TextColor="{StaticResource Parchment}"
+                                   VerticalOptions="Center"
+                                   SemanticProperties.Hint="Shows Arabic in natural reading order and converts it back to the game's format when it is stored" />
+                            <Switch Grid.Column="1"
+                                    IsToggled="{Binding ArabicVisualFix, Mode=TwoWay}"
+                                    OnColor="{StaticResource Brass}"
+                                    VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding TableSummary}"
+                               FontSize="12"
+                               TextColor="{StaticResource Muted}" />
+                    </VerticalStackLayout>
+
+                    <CollectionView Grid.Row="1"
+                                    ItemsSource="{Binding TableRows}"
+                                    SelectedItem="{Binding SelectedTableRow, Mode=TwoWay}"
+                                    SelectionMode="Single">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border StrokeThickness="1.5"
+                                        Stroke="{StaticResource RuleBrush}"
+                                        BackgroundColor="{StaticResource LeatherRaised}"
+                                        Padding="12,8">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12" />
+                                    </Border.StrokeShape>
+                                    <VisualStateManager.VisualStateGroups>
+                                        <VisualStateGroupList>
+                                            <VisualStateGroup x:Name="CommonStates">
+                                                <VisualState x:Name="Normal">
+                                                    <VisualState.Setters>
+                                                        <Setter Property="Stroke" Value="{StaticResource RuleBrush}" />
+                                                        <Setter Property="BackgroundColor" Value="{StaticResource LeatherRaised}" />
+                                                    </VisualState.Setters>
+                                                </VisualState>
+                                                <VisualState x:Name="Selected">
+                                                    <VisualState.Setters>
+                                                        <Setter Property="Stroke" Value="{StaticResource BrassBrush}" />
+                                                        <Setter Property="BackgroundColor" Value="{StaticResource RowSelected}" />
+                                                    </VisualState.Setters>
+                                                </VisualState>
+                                            </VisualStateGroup>
+                                        </VisualStateGroupList>
+                                    </VisualStateManager.VisualStateGroups>
+                                    <VerticalStackLayout Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="{Binding Header}"
+                                                   FontSize="12"
+                                                   TextColor="{StaticResource Muted}" />
+                                            <Label Grid.Column="1"
+                                                   Text="edited"
+                                                   FontSize="12"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource Brass}"
+                                                   IsVisible="{Binding IsEdited}" />
+                                        </Grid>
+                                        <Label Text="{Binding Preview}"
+                                               FontSize="15"
+                                               TextColor="{StaticResource Parchment}"
+                                               MaxLines="3"
+                                               LineBreakMode="TailTruncation" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <VerticalStackLayout Grid.Row="2"
+                                         Spacing="6"
+                                         IsVisible="{Binding HasRowSelected}">
+                        <Border Stroke="{StaticResource RuleBrush}"
+                                StrokeThickness="1"
+                                BackgroundColor="{StaticResource Leather}">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Editor Text="{Binding RowEditorText}"
+                                    IsReadOnly="{Binding IsTableReadOnly}"
+                                    HeightRequest="104"
+                                    FontSize="15"
+                                    TextColor="{StaticResource Parchment}"
+                                    BackgroundColor="Transparent"
+                                    AutoSize="Disabled"
+                                    IsSpellCheckEnabled="False"
+                                    IsTextPredictionEnabled="False" />
+                        </Border>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Button Grid.Column="0"
+                                    Text="Apply entry"
+                                    Style="{StaticResource RowButton}"
+                                    Command="{Binding ApplyRowCommand}" />
+                            <Button Grid.Column="1"
+                                    Text="Revert"
+                                    Style="{StaticResource RowButton}"
+                                    Command="{Binding RevertRowCommand}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Grid>
+                <Border Stroke="{StaticResource RuleBrush}"
+                        StrokeThickness="1"
+                        BackgroundColor="{StaticResource Leather}"
+                        IsVisible="{Binding IsHexMode}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <ScrollView Orientation="Both" Padding="10">
+                        <Label Text="{Binding HexText}"
+                               FontFamily="monospace"
+                               FontSize="12"
+                               LineBreakMode="CharacterWrap"
+                               TextColor="{StaticResource Parchment}" />
+                    </ScrollView>
+                </Border>
+            </Grid>
+
+            <VerticalStackLayout Grid.Row="3"
+                                 BackgroundColor="{StaticResource Leather}"
+                                 Padding="16,10,16,12"
+                                 Spacing="8">
+                <ProgressBar Progress="{Binding ProgressValue}"
+                             ProgressColor="{StaticResource Brass}"
+                             BackgroundColor="{StaticResource Rule}"
+                             HeightRequest="6"
+                             IsVisible="{Binding IsLoading}" />
+                <Label Text="{Binding ViewerNotice}"
+                       FontSize="13"
+                       TextColor="{StaticResource Muted}"
+                       MaxLines="4"
+                       LineBreakMode="TailTruncation" />
+                <Label Text="{Binding TextInfo}"
+                       FontSize="12"
+                       TextColor="{StaticResource Muted}"
+                       IsVisible="{Binding IsTextMode}" />
+                <Label Text="{Binding StatusMessage}"
+                       FontSize="13"
+                       TextColor="{StaticResource Parchment}"
+                       MaxLines="2"
+                       LineBreakMode="TailTruncation" />
+                <Grid ColumnDefinitions="*,Auto,*"
+                      ColumnSpacing="10"
+                      IsVisible="{Binding IsHexMode}">
+                    <Button Grid.Column="0"
+                            Text="Previous"
+                            Style="{StaticResource QuietAction}"
+                            Command="{Binding HexPreviousCommand}" />
+                    <Label Grid.Column="1"
+                           Text="{Binding HexPageLabel}"
+                           FontSize="14"
+                           TextColor="{StaticResource Parchment}"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="2"
+                            Text="Next"
+                            Style="{StaticResource QuietAction}"
+                            Command="{Binding HexNextCommand}" />
+                </Grid>
+                <Button Text="Apply to archive"
+                        Style="{StaticResource AccentAction}"
+                        IsVisible="{Binding IsTextMode}"
+                        Command="{Binding ApplyEditCommand}" />
+                <Grid ColumnDefinitions="*,*,2*"
+                      ColumnSpacing="8"
+                      IsVisible="{Binding IsTableMode}">
+                    <Button Grid.Column="0"
+                            Text="Export"
+                            Style="{StaticResource QuietAction}"
+                            Command="{Binding ExportTableCommand}" />
+                    <Button Grid.Column="1"
+                            Text="Import"
+                            Style="{StaticResource QuietAction}"
+                            Command="{Binding ImportTableCommand}" />
+                    <Button Grid.Column="2"
+                            Text="Apply table"
+                            Style="{StaticResource AccentAction}"
+                            Command="{Binding ApplyTableCommand}" />
+                </Grid>
+            </VerticalStackLayout>
+        </Grid>
+    </Grid>
+</ContentPage>

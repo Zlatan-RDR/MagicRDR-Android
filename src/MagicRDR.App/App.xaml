@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="MagicRDR.App.App">
+    <Application.Resources>
+        <ResourceDictionary>
+
+            <!-- Palette: saddle-leather darks, parchment text, one lawman-badge brass, one wanted-poster red. -->
+            <Color x:Key="Ink">#16120F</Color>
+            <Color x:Key="Leather">#211B16</Color>
+            <Color x:Key="LeatherRaised">#2B231C</Color>
+            <Color x:Key="RowSelected">#3A2E22</Color>
+            <Color x:Key="Parchment">#EFE6D4</Color>
+            <Color x:Key="Muted">#A39784</Color>
+            <Color x:Key="Rule">#3B3229</Color>
+            <Color x:Key="Cinnabar">#B3262D</Color>
+            <Color x:Key="Brass">#D2A43C</Color>
+            <Color x:Key="DisabledFill">#2E2822</Color>
+            <Color x:Key="DisabledText">#72675A</Color>
+
+            <SolidColorBrush x:Key="RuleBrush" Color="{StaticResource Rule}" />
+            <SolidColorBrush x:Key="BrassBrush" Color="{StaticResource Brass}" />
+
+            <Style x:Key="ActionButton" TargetType="Button">
+                <Setter Property="HeightRequest" Value="56" />
+                <Setter Property="MinimumHeightRequest" Value="56" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="BorderWidth" Value="0" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource DisabledFill}" />
+                                    <Setter Property="TextColor" Value="{StaticResource DisabledText}" />
+                                    <Setter Property="BorderColor" Value="{StaticResource DisabledFill}" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Open: the primary action -->
+            <Style x:Key="PrimaryAction" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+                <Setter Property="BackgroundColor" Value="{StaticResource Cinnabar}" />
+                <Setter Property="TextColor" Value="{StaticResource Parchment}" />
+            </Style>
+
+            <!-- Replace / Save: the accent actions -->
+            <Style x:Key="AccentAction" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+                <Setter Property="BackgroundColor" Value="{StaticResource Brass}" />
+                <Setter Property="TextColor" Value="{StaticResource Ink}" />
+            </Style>
+
+            <!-- Extract: neutral, outlined -->
+            <Style x:Key="QuietAction" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="{StaticResource Parchment}" />
+                <Setter Property="BorderColor" Value="{StaticResource Muted}" />
+                <Setter Property="BorderWidth" Value="1.5" />
+            </Style>
+
+            <Style x:Key="RowButton" TargetType="Button">
+                <Setter Property="HeightRequest" Value="48" />
+                <Setter Property="MinimumWidthRequest" Value="72" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="BackgroundColor" Value="{StaticResource LeatherRaised}" />
+                <Setter Property="TextColor" Value="{StaticResource Brass}" />
+                <Setter Property="BorderColor" Value="{StaticResource Rule}" />
+                <Setter Property="BorderWidth" Value="1" />
+                <Setter Property="Padding" Value="14,0" />
+            </Style>
+
+            <Style x:Key="IconButton" TargetType="Button">
+                <Setter Property="WidthRequest" Value="48" />
+                <Setter Property="HeightRequest" Value="48" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="24" />
+                <Setter Property="FontSize" Value="30" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="{StaticResource Brass}" />
+            </Style>
+
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

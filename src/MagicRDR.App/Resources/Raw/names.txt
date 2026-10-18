@@ -1,0 +1,6 @@
+# Magic RDR names list: one file name per line, UTF-8. Lines starting with # are ignored.
+# RPF6 archives store only hashes of names, so this list is what turns 0x1A2B3C4D back into a real name.
+# Replace this file with your own full list (for example the Settings/ImportedFileNames.txt of the Windows Magic RDR).
+# These two names come from a public description of the game's folder layout; they are only here to show the format.
+mapres.rpf
+tune_d11generic.rpf

@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Android only: no iOS / Mac Catalyst / Windows targets. API level defaults to 36 (Android 16). -->
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MagicRDR.App</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Pins every implicit and explicit MAUI package to one version. -->
+    <MauiVersion>10.0.110</MauiVersion>
+
+    <ApplicationTitle>Magic RDR</ApplicationTitle>
+
+    <!--
+      PACKAGE IDENTITY - NEVER CHANGE ApplicationId. Android treats a different id as a different app,
+      so changing it would make every future build install next to (not over) the existing one.
+      An update installs over the current app only when ALL THREE hold:
+        1) same ApplicationId, 2) signed with the same keystore, 3) a HIGHER versionCode.
+    -->
+    <ApplicationId>com.magicrdr.mobile</ApplicationId>
+
+    <!-- Local-build defaults only. The CI workflow overrides both:
+         ApplicationVersion (= versionCode) = minutes since 2026-01-01 UTC, so it can only go up;
+         ApplicationDisplayVersion (= versionName) = <APP_VERSION_BASE>.<run number>. -->
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <!-- Minimum Android 10 (API 29). Target Android 16 (API 36) comes from the TFM. -->
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">29.0</SupportedOSPlatformVersion>
+
+    <!-- Release builds produce an installable .apk instead of an .aab. -->
+    <AndroidPackageFormat Condition="'$(Configuration)' == 'Release'">apk</AndroidPackageFormat>
+
+    <!-- Only framework assemblies are trimmed; the app's own types stay (XAML bindings find properties by name). -->
+    <TrimMode>partial</TrimMode>
+
+    <!-- XC0022 only suggests compiled bindings (a speed hint); bindings here are intentionally reflection-based. -->
+    <NoWarn>$(NoWarn);XC0022</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <TrimmerRootAssembly Include="MagicRDR.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#211B16" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#211B16" BaseSize="128,128" />
+    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MagicRDR.Core\MagicRDR.Core.csproj" />
+  </ItemGroup>
+
+</Project>
