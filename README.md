@@ -2,8 +2,9 @@
 
 # Magic RDR for Android
 
-**Browse, extract, edit and rebuild Red Dead Redemption RPF archives, straight from your phone.**
-**تصفّح أرشيفات Red Dead Redemption بصيغة RPF واستخرجها وعدّلها وأعد بناءها مباشرة من هاتفك.**
+<b>Browse, extract, edit and rebuild Red Dead Redemption RPF archives, straight from your phone.</b>
+
+<p dir="rtl"><b>تصفّح أرشيفات Red Dead Redemption بصيغة RPF واستخرجها وعدّلها وأعد بناءها مباشرة من هاتفك.</b></p>
 
 [
 
@@ -14,12 +15,12 @@
 
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)
 
-](#install--التثبيت)
+](#install)
 [
 
 ![.NET 10 MAUI](https://img.shields.io/badge/.NET_10-MAUI-512BD4?logo=dotnet&logoColor=white)
 
-](#architecture--البنية)
+](#architecture)
 [
 
 ![Latest release](https://img.shields.io/github/v/release/Zlatan-RDR/MagicRDR-Android?label=release)
@@ -134,7 +135,7 @@ This project is built entirely by GitHub Actions. Uploading a new `MagicRDR-proj
 
 ### نبذة
 
-**Magic RDR for Android** منفذ أندرويد للأداة المكتبية **Magic-RDR (الإصدار 1.3.10) للمطوّر [ImFoxxyyy](https://github.com/ImFoxxyyy)**. هو عمل مشتق: معرفة صيغ الملفات مصدرها الأداة الأصلية، أما التطبيق نفسه فتنفيذ جديد بلغة C# على .NET 10 MAUI يعمل بالكامل على الهاتف دون حاجة إلى حاسوب.
+**Magic RDR for Android** منفذ أندرويد للأداة المكتبية **Magic-RDR (الإصدار 1.3.10) للمطوّر [ImFoxxyyy](https://github.com/ImFoxxyyy)**. هو عمل مشتق: معرفة صيغ الملفات مصدرها الأداة الأصلية، أما التطبيق نفسه فتنفيذ جديد بلغة C# على `.NET 10 MAUI` يعمل بالكامل على الهاتف دون حاجة إلى حاسوب.
 
 صُنع أساساً لـ **تعريب Red Dead Redemption** من الهاتف، ويصلح أيضاً كمتصفّح ومحرّر عام لأرشيفات RPF6.
 
@@ -168,17 +169,21 @@ This project is built entirely by GitHub Actions. Uploading a new `MagicRDR-proj
 
 **مفتاح التوقيع الدائم**
 
-كل الإصدارات موقّعة بالمفتاح الدائم نفسه، فيُثبَّت الإصدار الجديد فوق القديم وتبقى بياناتك. بصمة الشهادة (SHA-256):
+كل الإصدارات موقّعة بالمفتاح الدائم نفسه، فيُثبَّت الإصدار الجديد فوق القديم وتبقى بياناتك. بصمة الشهادة بخوارزمية SHA-256:
+
+<div dir="ltr" align="left">
 
 ```
 af8bd63ec56ca5feb91d788f3cd4c8a02799be6b49f7036bba4348d627bf3b8b
 ```
 
+</div>
+
 إن ظهرت لملف APK نزّلتَه بصمة مختلفة فلا تثبّته. والبصمة مكتوبة أيضاً في وصف كل Release.
 
 ### التثبيت
 
-1. افتح [**أحدث إصدار**](https://github.com/Zlatan-RDR/MagicRDR-Android/releases/latest) ونزّل `MagicRDR-Android-vX.Y.Z.apk` من قسم **Assets**.
+1. افتح [**أحدث إصدار**](https://github.com/Zlatan-RDR/MagicRDR-Android/releases/latest) ونزّل ملف APK الذي يبدأ اسمه بـ `MagicRDR-Android` من قسم **Assets**.
 2. قد يطلب أندرويد السماح بالتثبيت من هذا المصدر؛ اسمح لمتصفحك أو مدير الملفات.
 3. افتح ملف APK وثبّته. الإصدار الأحدث يُثبَّت مباشرة فوق الأقدم.
 4. يتطلب **أندرويد 10 (API 29) أو أحدث**.
@@ -194,21 +199,18 @@ af8bd63ec56ca5feb91d788f3cd4c8a02799be6b49f7036bba4348d627bf3b8b
 
 ### البنية
 
-```
-src/MagicRDR.Core          مكتبة net10.0: تحليل RPF6 وإعادة بناء جدول المحتويات وضغط deflate وZstandard
-                           وتشفير AES لجدول المحتويات والأسماء وجداول النصوص ومُرمِّز العربية (بلا واجهة)
-src/MagicRDR.App           تطبيق net10.0-android بـ MAUI (MVVM). الحد الأدنى أندرويد 10 (API 29)، والهدف أندرويد 16 (API 36)
-tests/MagicRDR.Core.Tests  اختبارات xUnit على بيانات اصطناعية، تعمل في CI مع كل بناء
-docs/                      ARCHITECTURE وFEATURE-PARITY وDEVELOPMENT وRELEASING وUPDATING (بالعربية)
-MagicRDR.sln               ملف الحل
-.github/workflows/         CI: فك المصدر والاختبار والبناء والتوقيع ونشر Release
-```
+- `src/MagicRDR.Core`: مكتبة `net10.0` فيها تحليل RPF6 وإعادة بناء جدول المحتويات وضغط deflate وZstandard وتشفير AES لجدول المحتويات والأسماء وجداول النصوص ومُرمِّز العربية، بلا أي واجهة.
+- `src/MagicRDR.App`: تطبيق `net10.0-android` بـ MAUI على نمط MVVM. الحد الأدنى أندرويد 10 (API 29)، والهدف أندرويد 16 (API 36).
+- `tests/MagicRDR.Core.Tests`: اختبارات xUnit على بيانات اصطناعية، تعمل في CI مع كل بناء.
+- `docs/`: ملفات ARCHITECTURE وFEATURE-PARITY وDEVELOPMENT وRELEASING وUPDATING (بالعربية).
+- `MagicRDR.sln`: ملف الحل.
+- `.github/workflows/`: الـ CI، وفيه فك المصدر والاختبار والبناء والتوقيع ونشر Release.
 
-قواعد إضافة الميزات في `docs/ARCHITECTURE.md`، وشرح مفتاح التوقيع والتحديث فوق النسخة المثبّتة في `docs/RELEASING.md`.
+قواعد إضافة الميزات في `docs/ARCHITECTURE.md`. وشرح مفتاح التوقيع والتحديث فوق النسخة المثبّتة في `docs/RELEASING.md`.
 
 ### البناء والتحديثات (عبر CI فقط، دون حاسوب)
 
-يُبنى هذا المشروع بالكامل عبر GitHub Actions. عند رفع `MagicRDR-project.zip` جديد إلى جذر المستودع يفكّه الـ workflow داخل شجرة المصدر، ثم يشغّل الاختبارات، ويبني الـ APK بـ .NET 10 MAUI، ويوقّعه بالمفتاح الدائم، وينشر GitHub Release. التفاصيل في `docs/UPDATING.md`.
+يُبنى هذا المشروع بالكامل عبر GitHub Actions. عند رفع `MagicRDR-project.zip` جديد إلى جذر المستودع يفكّه الـ workflow داخل شجرة المصدر، ثم يشغّل الاختبارات، ويبني الـ APK بـ `.NET 10 MAUI`، ويوقّعه بالمفتاح الدائم، وينشر GitHub Release. التفاصيل في `docs/UPDATING.md`.
 
 ### الشكر والإسناد
 
