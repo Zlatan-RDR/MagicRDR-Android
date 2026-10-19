@@ -372,6 +372,141 @@ jobs:
           $lines | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           exit 0
 
+      # Second APK for old 32-bit ARM phones (armeabi-v7a). It is built from exactly the same source tree and the
+      # same settings as the APK above; the only difference is the CPU target (RuntimeIdentifier=android-arm).
+      # The first APK is already safe in apk-out, so the build folders can be wiped for a clean second build.
+      - name: Build 32-bit APK (armeabi-v7a)
+        shell: pwsh
+        run: |
+          foreach ($dir in @("bin", "obj")) {
+            $path = Join-Path $env:PROJECT_DIR $dir
+            if (Test-Path $path) { Remove-Item $path -Recurse -Force }
+          }
+
+          dotnet restore "$env:PROJECT_FILE" -p:RuntimeIdentifier=android-arm
+          if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed for android-arm" }
+
+          $buildArgs = @(
+            "build", $env:PROJECT_FILE,
+            "-c", "Release",
+            "-f", "net10.0-android",
+            "--no-restore",
+            "-p:RuntimeIdentifier=android-arm",
+            "-p:AndroidPackageFormat=apk",
+            "-p:ApplicationVersion=$($env:VERSION_CODE)",
+            "-p:ApplicationDisplayVersion=$($env:VERSION_NAME)"
+          )
+          dotnet @buildArgs
+          if ($LASTEXITCODE -ne 0) { throw "dotnet build failed for android-arm" }
+
+      # Same signing, same key, same checks as the 64-bit APK. It must also show the same certificate.
+      - name: Sign and verify 32-bit APK
+        shell: pwsh
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
+        run: |
+          $bin = Join-Path $env:PROJECT_DIR "bin/Release/net10.0-android"
+          $built = Get-ChildItem -Path $bin -Filter *-Signed.apk -Recurse |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $built) { throw "No *-Signed.apk found under $bin for the 32-bit build" }
+
+          # Guard: this APK must hold the 32-bit ARM runtime and nothing for 64-bit.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $apkZip = [System.IO.Compression.ZipFile]::OpenRead($built.FullName)
+          try {
+            $abis = @($apkZip.Entries | ForEach-Object {
+              $m = [regex]::Match($_.FullName, '^lib/([^/]+)/')
+              if ($m.Success) { $m.Groups[1].Value }
+            } | Sort-Object -Unique)
+          }
+          finally {
+            $apkZip.Dispose()
+          }
+          Write-Host "Architectures in the 32-bit APK: $($abis -join ', ')"
+          if ($abis -notcontains "armeabi-v7a") { throw "The 32-bit APK has no armeabi-v7a libraries (found: $($abis -join ', '))." }
+          if ($abis -contains "arm64-v8a" -or $abis -contains "x86_64") { throw "The 32-bit APK also contains other architectures (found: $($abis -join ', '))." }
+          $apkMb = [Math]::Round($built.Length / 1MB, 1)
+
+          New-Item -ItemType Directory -Force -Path apk-out | Out-Null
+          $final = Join-Path "apk-out" "MagicRDR-Android-v$($env:VERSION_NAME)-armeabi-v7a.apk"
+
+          $hasKey = -not [string]::IsNullOrWhiteSpace($env:KEYSTORE_B64)
+          $hasPass = -not [string]::IsNullOrWhiteSpace($env:ANDROID_SIGNING_PASSWORD)
+          if ($hasKey -ne $hasPass) {
+            throw "Signing secrets are incomplete: set BOTH ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD."
+          }
+
+          $summary = @("", "### 32-bit APK (armeabi-v7a)", "",
+            "- file: $(Split-Path $final -Leaf)",
+            "- architectures: $($abis -join ', ')",
+            "- size: $apkMb MB")
+
+          if (-not $hasKey) {
+            Copy-Item $built.FullName $final -Force
+            Write-Host "::warning title=Temporary signing key::The 32-bit APK uses a throw-away debug key too. No GitHub Release will be published."
+            $summary += "- **Signing: TEMPORARY debug key**"
+            $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+
+          $sdk = $env:ANDROID_HOME
+          if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+          $apksigner = Get-ChildItem -Path (Join-Path $sdk "build-tools") -Filter apksigner.bat -Recurse |
+            Sort-Object { try { [version]$_.Directory.Name } catch { [version]"0.0" } } -Descending |
+            Select-Object -First 1
+          if (-not $apksigner) { throw "apksigner.bat not found under $sdk/build-tools" }
+          Write-Host "Using $($apksigner.FullName)"
+
+          $ks = Join-Path $env:RUNNER_TEMP "magicrdr-release-v7a.keystore"
+          try {
+            [IO.File]::WriteAllBytes($ks, [Convert]::FromBase64String($env:KEYSTORE_B64))
+            $signArgs = @(
+              "sign",
+              "--ks", $ks,
+              "--ks-key-alias", $env:KEY_ALIAS,
+              "--ks-pass", "env:ANDROID_SIGNING_PASSWORD",
+              "--key-pass", "env:ANDROID_SIGNING_PASSWORD",
+              "--v1-signing-enabled", "false",
+              "--v2-signing-enabled", "true",
+              "--v3-signing-enabled", "true",
+              "--out", $final,
+              $built.FullName
+            )
+            & $apksigner.FullName @signArgs
+            if ($LASTEXITCODE -ne 0) { throw "apksigner sign failed (wrong password or alias?)" }
+          }
+          finally {
+            Remove-Item $ks -Force -ErrorAction SilentlyContinue
+          }
+
+          $verify = (& $apksigner.FullName verify --verbose --print-certs $final 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "apksigner verify failed:`n$verify" }
+          Write-Host $verify
+          $v3 = $verify -match "v3 scheme[^\r\n]*: true"
+          $shaMatch = [regex]::Match($verify, "certificate SHA-256 digest: ([0-9a-fA-F]+)")
+          $sha = $shaMatch.Groups[1].Value.ToLower()
+
+          $summary += "- Signing: **permanent release key** (v3 = $v3)"
+          $summary += "- Certificate SHA-256: ``$sha``"
+          $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+          if (-not $v3) { throw "No v3 signature found on the 32-bit APK." }
+          if (-not $sha) { throw "Could not read the certificate fingerprint from apksigner output." }
+          # Both APKs must carry the very same certificate, or one of them could not update the other.
+          if ($env:CERT_SHA256 -and $sha -ne $env:CERT_SHA256) {
+            throw "The 32-bit APK certificate ($sha) differs from the 64-bit APK certificate ($($env:CERT_SHA256))."
+          }
+          if ($env:EXPECTED_CERT_SHA256) {
+            $want = ($env:EXPECTED_CERT_SHA256 -replace "[^0-9a-fA-F]", "").ToLower()
+            if ($sha -ne $want) { throw "Wrong certificate. Expected $want but the 32-bit APK has $sha" }
+          }
+
+          "APK_FILE_V7A=$final" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v6
         with:
@@ -400,6 +535,28 @@ jobs:
           $short = $commit.Substring(0, 7)
           $bt = [string][char]96
 
+          # The 32-bit APK (if it was built and signed) is attached to the same Release.
+          $assets = @($apk)
+          $apk7Lines = @()
+          if ($env:APK_FILE_V7A) {
+            $apk7 = (Resolve-Path $env:APK_FILE_V7A).Path
+            $assets += $apk7
+            $apk7Name = Split-Path $apk7 -Leaf
+            $apk7Sha = (Get-FileHash -Algorithm SHA256 -Path $apk7).Hash.ToLower()
+            $size7Mb = [Math]::Round((Get-Item $apk7).Length / 1MB, 1)
+            $apk7Lines = @(
+              "",
+              "### Which file?",
+              "- **$apkName** ($sizeMb MB): 64-bit phones (almost every phone made in recent years).",
+              "- **$apk7Name** ($size7Mb MB): older 32-bit ARM phones (armeabi-v7a).",
+              "- 32-bit APK file SHA-256: $bt$apk7Sha$bt",
+              "",
+              "### أي ملف أنزّل؟",
+              "- الملف الأول (64-bit): لمعظم الهواتف الحديثة.",
+              "- الملف الذي ينتهي بـ armeabi-v7a: للهواتف القديمة ذات المعالج 32-bit."
+            )
+          }
+
           $lines = @(
             "## Magic RDR $ver",
             "",
@@ -418,20 +575,21 @@ jobs:
             "",
             "Build: commit $short, GitHub Actions run $($env:GITHUB_RUN_NUMBER)"
           )
+          $lines = $lines[0..2] + $apk7Lines + $lines[3..($lines.Count - 1)]
           $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
           ($lines -join "`n") | Set-Content -Path $notes -Encoding utf8
 
           $null = gh release view $tag --repo $env:REPO 2>&1
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists: updating it."
-            gh release upload $tag $apk --clobber --repo $env:REPO
+            gh release upload $tag @assets --clobber --repo $env:REPO
             if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
             gh release edit $tag --repo $env:REPO --title "Magic RDR $ver" --notes-file $notes --latest
             if ($LASTEXITCODE -ne 0) { throw "gh release edit failed" }
           }
           else {
             Write-Host "Creating release $tag."
-            gh release create $tag $apk --repo $env:REPO --target $commit --title "Magic RDR $ver" --notes-file $notes --latest
+            gh release create $tag @assets --repo $env:REPO --target $commit --title "Magic RDR $ver" --notes-file $notes --latest
             if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
           }
 
