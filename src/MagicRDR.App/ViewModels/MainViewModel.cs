@@ -34,7 +34,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _selectedRpfPath = string.Empty;
 
-    /// <summary>The rows of the folder currently shown (".." first, then folders, then files).</summary>
+    /// <summary>The rows of the folder currently shown ("..", first, then folders, then files).</summary>
     [ObservableProperty]
     private ObservableCollection<RpfNodeItem> _fileTreeNodes = new();
 
@@ -161,30 +161,44 @@ public partial class MainViewModel : ObservableObject
         int bundled = 0;
         int remembered = 0;
 
+        // The names list is large, so it is read off the UI thread. The commands stay disabled until it is ready,
+        // so no archive can be opened against a half-loaded list.
+        IsLoading = true;
+        StatusMessage = "Loading file names…";
         try
         {
-            await using Stream? stream = await _files.OpenPackageFileAsync("names.txt");
-            if (stream != null)
+            try
             {
-                bundled = await _names.LoadAsync(stream);
+                await using Stream? stream = await _files.OpenPackageFileAsync("names.txt");
+                if (stream != null)
+                {
+                    bundled = await _names.LoadAsync(stream);
+                }
             }
-        }
-        catch (Exception)
-        {
-            // The bundled list is optional; unresolved entries simply show their hash.
-        }
+            catch (Exception)
+            {
+                // The bundled list is optional; unresolved entries simply show their hash.
+            }
 
-        try
-        {
-            if (File.Exists(UserNamesPath))
+            // From here on only names the user adds are remembered in app storage; the bundled list never is.
+            _names.MarkBaseline();
+
+            try
             {
-                await using var file = new FileStream(UserNamesPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous);
-                remembered = await _names.LoadAsync(file);
+                if (File.Exists(UserNamesPath))
+                {
+                    await using var file = new FileStream(UserNamesPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous);
+                    remembered = await _names.LoadAsync(file);
+                }
+            }
+            catch (Exception)
+            {
+                // A damaged remembered-names file must never stop the app from starting.
             }
         }
-        catch (Exception)
+        finally
         {
-            // A damaged remembered-names file must never stop the app from starting.
+            IsLoading = false;
         }
 
         RefreshNamesSummary();
