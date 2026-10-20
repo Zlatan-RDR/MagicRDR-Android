@@ -557,6 +557,53 @@ jobs:
             )
           }
 
+          # "What's new": first the Unreleased section of CHANGELOG.md (written by you), then, automatically,
+          # the titles of the commits made since the previous Release.
+          $changeText = ""
+          if (Test-Path "CHANGELOG.md") {
+            $all = @(Get-Content -Path "CHANGELOG.md" -Encoding utf8)
+            $start = -1
+            for ($i = 0; $i -lt $all.Count; $i++) {
+              if ($all[$i] -match '^##\s+Unreleased\s*$') { $start = $i; break }
+            }
+            if ($start -ge 0) {
+              $body = @()
+              for ($j = $start + 1; $j -lt $all.Count; $j++) {
+                if ($all[$j] -match '^##\s') { break }
+                $body += $all[$j]
+              }
+              $changeText = ($body -join "`n").Trim()
+            }
+          }
+
+          $prevTag = (git tag --list "v*" --sort=-v:refname | Where-Object { $_ -and $_ -ne $tag } | Select-Object -First 1)
+          $commitLines = @()
+          if ($prevTag) {
+            $subjects = @(git log "$prevTag..HEAD" --no-merges "--pretty=format:%s")
+            if ($LASTEXITCODE -eq 0) {
+              $commitLines = @($subjects |
+                Where-Object { $_ -and $_ -notmatch '^Unpack ' -and $_ -notmatch '^Changelog' } |
+                Select-Object -Unique |
+                Select-Object -First 20 |
+                ForEach-Object { "- $_" })
+            }
+          }
+
+          $changeBlock = @("", "### What's new / الجديد", "")
+          if ($changeText) {
+            $changeBlock += ($changeText -split "`r?`n")
+          }
+          else {
+            $changeBlock += "- Maintenance build: see the commits below."
+          }
+          if ($commitLines.Count -gt 0) {
+            $changeBlock += @("", "Commits in this build:")
+            $changeBlock += $commitLines
+          }
+          if ($prevTag) {
+            $changeBlock += @("", "Full comparison: https://github.com/$($env:REPO)/compare/$prevTag...$tag")
+          }
+
           $lines = @(
             "## Magic RDR $ver",
             "",
@@ -575,7 +622,7 @@ jobs:
             "",
             "Build: commit $short, GitHub Actions run $($env:GITHUB_RUN_NUMBER)"
           )
-          $lines = $lines[0..2] + $apk7Lines + $lines[3..($lines.Count - 1)]
+          $lines = $lines[0..2] + $changeBlock + $apk7Lines + $lines[3..($lines.Count - 1)]
           $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
           ($lines -join "`n") | Set-Content -Path $notes -Encoding utf8
 
@@ -596,4 +643,59 @@ jobs:
           $link = "https://github.com/$($env:REPO)/releases/tag/$tag"
           Write-Host "Release: $link"
           "- Release: $link" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          exit 0
+
+      # After a Release is published, the "Unreleased" notes of CHANGELOG.md are filed under this version,
+      # so the next Release starts with an empty list. Best effort: the Release is already published, so a
+      # failure here loses nothing.
+      - name: Roll changelog
+        if: env.SIGNED == 'true'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if (-not (Test-Path "CHANGELOG.md")) { Write-Host "No CHANGELOG.md."; exit 0 }
+          $all = @(Get-Content -Path "CHANGELOG.md" -Encoding utf8)
+          $idx = -1
+          for ($i = 0; $i -lt $all.Count; $i++) {
+            if ($all[$i] -match '^##\s+Unreleased\s*$') { $idx = $i; break }
+          }
+          if ($idx -lt 0) { Write-Host "No Unreleased section."; exit 0 }
+
+          $hasText = $false
+          for ($j = $idx + 1; $j -lt $all.Count; $j++) {
+            if ($all[$j] -match '^##\s') { break }
+            if ($all[$j].Trim().Length -gt 0) { $hasText = $true; break }
+          }
+          if (-not $hasText) { Write-Host "Unreleased is empty: nothing to file."; exit 0 }
+
+          $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+          $head = @($all[0..$idx])
+          $tail = @()
+          if ($idx + 1 -lt $all.Count) { $tail = @($all[($idx + 1)..($all.Count - 1)]) }
+          $out = $head + @("", "## $($env:VERSION_NAME) - $date") + $tail
+          $text = ($out -join "`n") + "`n"
+          [System.IO.File]::WriteAllText((Join-Path $PWD.Path "CHANGELOG.md"), $text, [System.Text.UTF8Encoding]::new($false))
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "Changelog: $($env:VERSION_NAME) [skip ci]"
+          if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
+
+          $pushed = $false
+          for ($i = 1; $i -le 3; $i++) {
+            git push origin "HEAD:$($env:BRANCH)"
+            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+            Write-Host "Push rejected (attempt $i). Fetching and rebasing, then trying again."
+            git fetch origin $env:BRANCH
+            git rebase "origin/$($env:BRANCH)"
+            if ($LASTEXITCODE -ne 0) {
+              git rebase --abort
+              throw "Could not rebase onto origin/$($env:BRANCH)."
+            }
+          }
+          if (-not $pushed) { throw "git push failed after 3 attempts." }
+          Write-Host "Changelog filed under $($env:VERSION_NAME)."
           exit 0
