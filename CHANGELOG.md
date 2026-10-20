@@ -5,6 +5,8 @@ Every Release page shows the "Unreleased" list below as its "What's new" section
 
 ## Unreleased
 
+## 1.2.39 - 2026-10-20
+
 - Each Release page now shows what is new in that version. / صفحة كل إصدار تعرض الآن الجديد في ذلك الإصدار.
 
 ## 1.2.37 - 2026-10-20
