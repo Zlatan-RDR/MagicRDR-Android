@@ -5,22 +5,20 @@ Every Release page shows the "Unreleased" list below as its "What's new" section
 
 ## Unreleased
 
-## 1.2.48 - 2026-10-21
-
 - In-app updates: the app tells you when a new version is available and can download and install it for you. / التحديث من داخل التطبيق: ينبّهك التطبيق عند توفر نسخة جديدة ويمكنه تنزيلها وتثبيتها لك.
 - The app now uses the internet only to check GitHub for new versions. / يستخدم التطبيق الإنترنت الآن فقط للتحقق من النسخ الجديدة على GitHub.
-  
-## 1.2.39 - 2026-10-20
+
+## 1.1.2 - 2026-10-20
 
 - Each Release page now shows what is new in that version. / صفحة كل إصدار تعرض الآن الجديد في ذلك الإصدار.
 
-## 1.2.37 - 2026-10-20
+## 1.1.1 - 2026-10-20
 
 - Built-in names list: about 236,900 file names, so hashed entries show their real names automatically. / قائمة أسماء مضمّنة بحوالي 236,900 اسم، فتظهر الملفات بأسمائها الحقيقية تلقائياً بدل الهاشات.
 - The list loads in the background (no freeze at start-up), and only the names you add yourself are saved on the phone. / تُحمَّل القائمة في الخلفية دون تجميد عند التشغيل، ولا يُحفظ على الهاتف إلا الأسماء التي تضيفها أنت.
 - New 32-bit APK (armeabi-v7a) for older phones, published next to the 64-bit one. / نسخة جديدة 32-bit (armeabi-v7a) للهواتف القديمة بجانب نسخة 64-bit.
 
-## 1.2.x (earlier builds / الإصدارات السابقة)
+## Earlier builds / الإصدارات السابقة
 
 - Browse, extract and replace files in RPF archives (Switch / Zstandard), with Save RPF and re-open. / تصفح أرشيفات RPF واستخراج الملفات واستبدالها مع حفظ RPF وإعادة فتحه.
 - File viewer and editor: text and hex. / عارض ومحرر للملفات: نص وهكس.
