@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- No storage permissions are needed: files come from / go to the system document picker (Storage Access Framework). -->
+
+    <!-- Used only to look for a newer version on GitHub and to download it (in-app updates). Nothing else goes online. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets the app hand a downloaded update to Android's installer; Android still asks the user to confirm. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:allowBackup="false"
         android:supportsRtl="true"
