@@ -5,6 +5,9 @@ Every Release page shows the "Unreleased" list below as its "What's new" section
 
 ## Unreleased
 
+- In-app updates: the app tells you when a new version is available and can download and install it for you. / التحديث من داخل التطبيق: ينبّهك التطبيق عند توفر نسخة جديدة ويمكنه تنزيلها وتثبيتها لك.
+- The app now uses the internet only to check GitHub for new versions. / يستخدم التطبيق الإنترنت الآن فقط للتحقق من النسخ الجديدة على GitHub.
+  
 ## 1.2.39 - 2026-10-20
 
 - Each Release page now shows what is new in that version. / صفحة كل إصدار تعرض الآن الجديد في ذلك الإصدار.
