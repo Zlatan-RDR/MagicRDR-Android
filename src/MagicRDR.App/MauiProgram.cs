@@ -15,6 +15,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<IFileService, MauiFileService>();
         builder.Services.AddSingleton<IDialogService, MauiDialogService>();
+        builder.Services.AddSingleton<IUpdateService, GitHubUpdateService>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddTransient<MainPage>();
 
