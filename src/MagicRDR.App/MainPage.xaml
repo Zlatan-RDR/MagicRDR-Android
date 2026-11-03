@@ -52,7 +52,7 @@
                     SemanticProperties.Hint="Close this archive and delete its saved copy" />
         </Grid>
 
-        <!-- Filter box and item count (only while an archive is open) -->
+        <!-- Filter box, sort choice and item count (only while an archive is open) -->
         <VerticalStackLayout Grid.Row="1"
                              Padding="16,12,16,4"
                              Spacing="6"
@@ -77,6 +77,22 @@
                        ClearButtonVisibility="WhileEditing"
                        VerticalOptions="Center" />
             </Border>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Label Text="Sort"
+                       FontSize="14"
+                       TextColor="{StaticResource Parchment}"
+                       VerticalOptions="Center"
+                       Margin="4,0,0,0" />
+                <Picker Grid.Column="1"
+                        Title="Sort the files"
+                        ItemsSource="{Binding SortChoices}"
+                        SelectedIndex="{Binding SelectedSortIndex, Mode=TwoWay}"
+                        FontSize="15"
+                        TextColor="{StaticResource Parchment}"
+                        TitleColor="{StaticResource Muted}"
+                        BackgroundColor="{StaticResource LeatherRaised}"
+                        SemanticProperties.Hint="Choose how the files in this folder are ordered. Folders always stay on top." />
+            </Grid>
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                 <Button Text="Import names"
                         Style="{StaticResource RowButton}"
