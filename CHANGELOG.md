@@ -5,7 +5,7 @@ Every Release page shows the "Unreleased" list below as its "What's new" section
 
 ## Unreleased
 
-- Sort the file list: name, size, type or original order (folders always stay on top)
+- Hashed (0x...) names are now resolved automatically when an archive is opened, using the known names, numbered series and prefixes; found names are remembered
 
 ## 1.1.3 - 2026-10-21
 
