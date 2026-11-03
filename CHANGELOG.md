@@ -5,6 +5,8 @@ Every Release page shows the "Unreleased" list below as its "What's new" section
 
 ## Unreleased
 
+- Sort the file list: name, size, type or original order (folders always stay on top)
+
 ## 1.1.3 - 2026-10-21
 
 - In-app updates: the app tells you when a new version is available and can download and install it for you. / التحديث من داخل التطبيق: ينبّهك التطبيق عند توفر نسخة جديدة ويمكنه تنزيلها وتثبيتها لك.
