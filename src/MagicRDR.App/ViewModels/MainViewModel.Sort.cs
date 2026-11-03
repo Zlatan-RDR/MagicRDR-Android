@@ -10,6 +10,7 @@ namespace MagicRDR.App.ViewModels;
 /// <see cref="FileTreeNodes"/> is assigned, <see cref="OnFileTreeNodesChanged"/> puts the rows in the chosen order,
 /// before the list is shown. The ".." row stays first, folders stay above files, and the rows themselves are only
 /// reordered, so the multi-select ticks and the filter are not touched.
+/// The same hook also asks for hashed names to be resolved automatically (see MainViewModel.Resolve.cs).
 /// </summary>
 public partial class MainViewModel
 {
@@ -66,7 +67,11 @@ public partial class MainViewModel
     }
 
     /// <summary>Runs every time a new list of rows is assigned, before the list sees it.</summary>
-    partial void OnFileTreeNodesChanged(ObservableCollection<RpfNodeItem> value) => ApplySort(value);
+    partial void OnFileTreeNodesChanged(ObservableCollection<RpfNodeItem> value)
+    {
+        ApplySort(value);
+        ScheduleHashResolution();
+    }
 
     private void ApplySort(ObservableCollection<RpfNodeItem> rows)
     {
