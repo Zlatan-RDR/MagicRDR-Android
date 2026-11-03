@@ -5,6 +5,8 @@ Every Release page shows the "Unreleased" list below as its "What's new" section
 
 ## Unreleased
 
+## 1.1.5 - 2026-11-03
+
 - Hashed (0x...) names are now resolved automatically when an archive is opened, using the known names, numbered series and prefixes; found names are remembered
 
 ## 1.1.3 - 2026-10-21
